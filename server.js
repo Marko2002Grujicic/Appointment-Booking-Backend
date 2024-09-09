@@ -28,7 +28,7 @@ app.use(
 );
 
 app.post("/register", (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, preferred_language } = req.body;
 
   if (!name || !email || !password) {
     return res
@@ -49,8 +49,8 @@ app.post("/register", (req, res) => {
     const hashedPassword = bcrypt.hashSync(password, 10);
 
     pool.query(
-      "INSERT INTO users (name, email, password) VALUES (?, ?, ?)",
-      [name, email, hashedPassword],
+      "INSERT INTO users (name, email, password, preferred_language) VALUES (?, ?, ?, ?)",
+      [name, email, hashedPassword, preferred_language],
       (err, result) => {
         if (err) {
           console.error("Database error:", err);
@@ -73,7 +73,9 @@ app.post("/login", (req, res) => {
   pool.query("SELECT * FROM users WHERE email = ?", [email], (err, results) => {
     if (err) {
       console.error("Database error:", err);
-      return res.status(500).json({ error: "Server error" });
+      return res
+        .status(500)
+        .json({ error: "There was an error with logging in" });
     }
 
     if (results.length === 0) {
@@ -86,7 +88,6 @@ app.post("/login", (req, res) => {
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    // Generate JWT token
     const token = jwt.sign({ id: user.id, email: user.email }, jwtSecret, {
       expiresIn: "24h",
     });
@@ -102,15 +103,43 @@ app.post("/logout", (req, res) => {
   res.status(200).json({ message: "Logged out successfully" });
 });
 
+app.get("/user-emails", (req, res) => {
+  pool.query("SELECT email FROM users", (error, results) => {
+    if (error) {
+      return res
+        .status(500)
+        .json({ error: "There was an error fetching emails" });
+    }
+    const emails = results.map((row) => row.email);
+    res.json(emails);
+  });
+});
+
+app.get("/user-availabilities", (req, res) => {
+  pool.query("SELECT availability_data FROM availability", (error, results) => {
+    if (error) {
+      return res
+        .status(500)
+        .json({ error: "There was an error fetching availabilities" });
+    }
+    const availabilities = results.map((row) => row.availability_data);
+    res.json(availabilities);
+  });
+});
+
 app.get("/user/:id", (req, res) => {
   const userId = req.params.id;
   pool.query("SELECT * FROM users WHERE id = ?", [userId], (error, results) => {
     if (error) {
-      return res.status(500).json({ error: "Server error" });
+      return res
+        .status(500)
+        .json({ error: "There was an error fetching user data" });
     }
     res.status(200).json(results);
   });
 });
+
+app.post;
 
 app.get("/users/:id/availability", (req, res) => {
   const userId = req.params.id;
@@ -120,7 +149,9 @@ app.get("/users/:id/availability", (req, res) => {
     [userId],
     (error, results) => {
       if (error) {
-        return res.status(500).json({ error: "Server error" });
+        return res
+          .status(500)
+          .json({ error: "There was an error fetching availability" });
       }
       res.status(200).json(JSON.parse(results[0].availability_data));
     }
@@ -152,36 +183,25 @@ app.put("/users/:id/availability", (req, res) => {
   );
 });
 
-app.get("/user-emails", (req, res) => {
-  pool.query("SELECT email FROM users", (error, results) => {
-    if (error) {
-      return res.status(500).json({ error: "Server error" });
-    }
-    const emails = results.map((row) => row.email);
-    res.json(emails);
-  });
-});
-
-app.get("/meetings", authenticateToken, (req, res) => {
+app.get("/appointments", authenticateToken, (req, res) => {
   const userId = req.user.id;
 
   pool.query(
-    "SELECT * FROM meetings WHERE user_id = ?",
+    "SELECT * FROM appointments WHERE user_id = ?",
     [userId],
     (error, results) => {
-      if (error) return res.status(500).send("Server Error");
+      if (error)
+        return res.status(500).send("There was an error fetching the meetings");
       res.status(200).json(results);
     }
   );
 });
 
-app.post("/meetings", authenticateToken, (req, res) => {
+app.post("/appointments", authenticateToken, (req, res) => {
   const { title, start, end, location, guests, description, userId } = req.body;
 
-  console.log(req.body);
-
   pool.query(
-    "INSERT INTO meetings (user_id, title, start, end, location, guests, description ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO appointments (user_id, title, start, end, location, guests, description ) VALUES (?, ?, ?, ?, ?, ?, ?)",
     [userId, title, start, end, location, guests, description],
     (error, result) => {
       if (error) return res.status(500).send("Server error");
@@ -198,15 +218,17 @@ app.post("/meetings", authenticateToken, (req, res) => {
   );
 });
 
-app.get("/meetings/:id", authenticateToken, (req, res) => {
-  const meetingId = req.params.id;
+app.get("/appointments/:id", authenticateToken, (req, res) => {
+  const appointmentId = req.params.id;
 
   pool.query(
-    "SELECT * FROM meetings WHERE id = ?",
-    [meetingId],
+    "SELECT * FROM appointments WHERE id = ?",
+    [appointmentId],
     (error, results) => {
       if (error) {
-        return res.status(500).json({ error: "Server error" });
+        return res
+          .status(500)
+          .json({ error: "There was an error fetching the meeting" });
       }
 
       if (results.length === 0) {
@@ -218,15 +240,14 @@ app.get("/meetings/:id", authenticateToken, (req, res) => {
   );
 });
 
-app.put("/meetings/:id", authenticateToken, (req, res) => {
+app.put("/appointments/:id", authenticateToken, (req, res) => {
   const appointmentId = req.params.id;
   const { title, start, end, location, guests, description } = req.body;
   const userId = req.user.id;
-
   const guestsArray = Array.isArray(guests) ? guests : JSON.parse(guests);
 
   pool.query(
-    "UPDATE meetings SET title = ?, start = ?, end = ?, location = ?, guests = ?, description = ? WHERE id = ? AND user_id = ?",
+    "UPDATE appointments SET title = ?, start = ?, end = ?, location = ?, guests = ?, description = ? WHERE id = ? AND user_id = ?",
     [
       title,
       start,
@@ -238,8 +259,28 @@ app.put("/meetings/:id", authenticateToken, (req, res) => {
       userId,
     ],
     (error, result) => {
-      if (error) return res.status(500).send("Server error");
-      res.status(200).send("Appointment updated successfully");
+      if (error)
+        return res.status(500).send("There was an error updating the meeting");
+      res.status(200).send("Meeting updated successfully");
+    }
+  );
+});
+
+app.delete("/delete-appointments/:id", authenticateToken, (req, res) => {
+  const appointmentId = req.params.id;
+  pool.query(
+    "DELETE FROM appointments WHERE id = ?",
+    [appointmentId],
+    (error, result) => {
+      if (error) {
+        return res
+          .status(500)
+          .json({ error: "There was an error deleting the meeting" });
+      }
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ error: "Meeting not found" });
+      }
+      res.status(200).json({ message: "Meeting deleted successfully" });
     }
   );
 });
