@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const authenticateToken = require("./middleware/authenticateToken");
+const getOverlappingTimes = require("./middleware/timeUnion");
 require("dotenv").config();
 
 const app = express();
@@ -115,16 +116,66 @@ app.get("/user-emails", (req, res) => {
   });
 });
 
-app.get("/user-availabilities", (req, res) => {
-  pool.query("SELECT availability_data FROM availability", (error, results) => {
-    if (error) {
-      return res
-        .status(500)
-        .json({ error: "There was an error fetching availabilities" });
+app.post("/user-availabilities", (req, res) => {
+  const emailsArray = Object.values(req.body);
+
+  if (!emailsArray || !Array.isArray(emailsArray)) {
+    return res
+      .status(400)
+      .json({ error: "Emails are required and must be an array" });
+  }
+
+  pool.query(
+    "SELECT id FROM users WHERE email IN (?)",
+    [emailsArray],
+    (error, userResults) => {
+      if (error) {
+        return res.status(500).json({
+          error: "Error fetching user IDs from emails",
+        });
+      }
+
+      const userIds = userResults.map((row) => row.id);
+
+      if (userIds.length === 0) {
+        return res
+          .status(404)
+          .json({ message: "No users found for the given emails" });
+      }
+
+      pool.query(
+        "SELECT user_id, availability_data FROM availability WHERE user_id IN (?)",
+        [userIds],
+        (error, availabilityResults) => {
+          if (error) {
+            return res
+              .status(500)
+              .json({ error: "There was an error fetching availabilities" });
+          }
+
+          const availabilities = availabilityResults.map((row) =>
+            JSON.parse(row.availability_data)
+          );
+
+          const combinedAvailability = availabilities.reduce((acc, avail) => {
+            for (const day of Object.keys(avail)) {
+              if (!acc[day]) {
+                acc[day] = avail[day];
+              } else {
+                acc[day] = getOverlappingTimes(
+                  { [day]: acc[day] },
+                  { [day]: avail[day] }
+                )[day];
+              }
+            }
+            return acc;
+          }, {});
+
+          res.json(combinedAvailability);
+        }
+      );
     }
-    const availabilities = results.map((row) => row.availability_data);
-    res.json(availabilities);
-  });
+  );
 });
 
 app.get("/user/:id", (req, res) => {
@@ -198,11 +249,29 @@ app.get("/appointments", authenticateToken, (req, res) => {
 });
 
 app.post("/appointments", authenticateToken, (req, res) => {
-  const { title, start, end, location, guests, description, userId } = req.body;
+  const {
+    title,
+    start,
+    end,
+    location,
+    guests,
+    description,
+    userId,
+    sendNotification,
+  } = req.body;
 
   pool.query(
-    "INSERT INTO appointments (user_id, title, start, end, location, guests, description ) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [userId, title, start, end, location, guests, description],
+    "INSERT INTO appointments (user_id, title, start, end, location, guests, description, send_notification ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [
+      userId,
+      title,
+      start,
+      end,
+      location,
+      guests,
+      description,
+      sendNotification,
+    ],
     (error, result) => {
       if (error) return res.status(500).send("Server error");
       res.status(201).json({
