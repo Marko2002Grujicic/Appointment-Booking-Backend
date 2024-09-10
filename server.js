@@ -4,8 +4,10 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const bodyParser = require("body-parser");
 const cors = require("cors");
+const moment = require("moment");
 const authenticateToken = require("./middleware/authenticateToken");
 const getOverlappingTimes = require("./middleware/timeUnion");
+const transporter = require("./middleware/nodemailer");
 require("dotenv").config();
 
 const app = express();
@@ -261,7 +263,7 @@ app.post("/appointments", authenticateToken, (req, res) => {
   } = req.body;
 
   pool.query(
-    "INSERT INTO appointments (user_id, title, start, end, location, guests, description, send_notification ) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO appointments (user_id, title, start, end, location, guests, description, send_notification ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [
       userId,
       title,
@@ -274,6 +276,31 @@ app.post("/appointments", authenticateToken, (req, res) => {
     ],
     (error, result) => {
       if (error) return res.status(500).send("Server error");
+
+      if (sendNotification) {
+        const guestList = JSON.parse(guests);
+        const creatorEmail = guestList[0];
+        const formattedStart = moment(start).format(
+          "dddd, MMMM D, YYYY, HH:mm"
+        );
+        const formattedEnd = moment(end).format("dddd, MMMM D, YYYY, HH:mm");
+
+        guestList.forEach((email) => {
+          const mailOptions = {
+            from: process.env.EMAIL,
+            to: email,
+            subject: "Meeting Invitation",
+            text: `You are invited to a meeting!\n\nTitle: ${title}\nStart: ${formattedStart}\nEnd: ${formattedEnd}\nCreator: ${creatorEmail}\nLocation: ${location}\nDescription: ${description}`,
+          };
+
+          transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+              console.error(`Failed to send email to ${email}:`, error);
+            }
+          });
+        });
+      }
+
       res.status(201).json({
         userId,
         title,
@@ -311,12 +338,13 @@ app.get("/appointments/:id", authenticateToken, (req, res) => {
 
 app.put("/appointments/:id", authenticateToken, (req, res) => {
   const appointmentId = req.params.id;
-  const { title, start, end, location, guests, description } = req.body;
+  const { title, start, end, location, guests, description, sendNotification } =
+    req.body;
   const userId = req.user.id;
   const guestsArray = Array.isArray(guests) ? guests : JSON.parse(guests);
 
   pool.query(
-    "UPDATE appointments SET title = ?, start = ?, end = ?, location = ?, guests = ?, description = ? WHERE id = ? AND user_id = ?",
+    "UPDATE appointments SET title = ?, start = ?, end = ?, location = ?, guests = ?, description = ?, send_notification = ? WHERE id = ? AND user_id = ?",
     [
       title,
       start,
@@ -324,12 +352,38 @@ app.put("/appointments/:id", authenticateToken, (req, res) => {
       location,
       JSON.stringify(guestsArray),
       description,
+      sendNotification,
       appointmentId,
       userId,
     ],
     (error, result) => {
       if (error)
         return res.status(500).send("There was an error updating the meeting");
+
+      if (sendNotification) {
+        const guestList = JSON.parse(guests);
+        const creatorEmail = guestList[0];
+        const formattedStart = moment(start).format(
+          "dddd, MMMM D, YYYY, HH:mm"
+        );
+        const formattedEnd = moment(end).format("dddd, MMMM D, YYYY, HH:mm");
+
+        guestList.forEach((email) => {
+          const mailOptions = {
+            from: process.env.EMAIL,
+            to: email,
+            subject: "Meeting Update",
+            text: `Meeting you are invited to has been updated!\n\nTitle: ${title}\nStart: ${formattedStart}\nEnd: ${formattedEnd}\nCreator: ${creatorEmail}\nLocation: ${location}\nDescription: ${description}`,
+          };
+
+          transporter.sendMail(mailOptions, (error, info) => {
+            if (error) {
+              console.error(`Failed to send email to ${email}:`, error);
+            }
+          });
+        });
+      }
+
       res.status(200).send("Meeting updated successfully");
     }
   );
@@ -337,19 +391,61 @@ app.put("/appointments/:id", authenticateToken, (req, res) => {
 
 app.delete("/delete-appointments/:id", authenticateToken, (req, res) => {
   const appointmentId = req.params.id;
+
   pool.query(
-    "DELETE FROM appointments WHERE id = ?",
+    "SELECT * FROM appointments WHERE id = ?",
     [appointmentId],
-    (error, result) => {
+    (error, results) => {
       if (error) {
         return res
           .status(500)
-          .json({ error: "There was an error deleting the meeting" });
+          .json({ error: "There was an error fetching the meeting details" });
       }
-      if (result.affectedRows === 0) {
+
+      if (results.length === 0) {
         return res.status(404).json({ error: "Meeting not found" });
       }
-      res.status(200).json({ message: "Meeting deleted successfully" });
+
+      const meeting = results[0];
+      const { title, start, end, location, guests, description } = meeting;
+      const guestList = JSON.parse(guests);
+      const creatorEmail = guestList[0];
+      const formattedStart = moment(start).format("dddd, MMMM D, YYYY, HH:mm");
+      const formattedEnd = moment(end).format("dddd, MMMM D, YYYY, HH:mm");
+
+      pool.query(
+        "DELETE FROM appointments WHERE id = ?",
+        [appointmentId],
+        (error, result) => {
+          if (error) {
+            return res
+              .status(500)
+              .json({ error: "There was an error deleting the meeting" });
+          }
+          if (result.affectedRows === 0) {
+            return res.status(404).json({ error: "Meeting not found" });
+          }
+
+          guestList.forEach((email) => {
+            const mailOptions = {
+              from: process.env.EMAIL,
+              to: email,
+              subject: "Meeting Canceled",
+              text: `A meeting you were invited to has been canceled.\n\nTitle: ${title}\nStart: ${formattedStart}\nEnd: ${formattedEnd}\nCreator: ${creatorEmail}\nLocation: ${location}\nDescription: ${description}`,
+            };
+
+            transporter.sendMail(mailOptions, (error, info) => {
+              if (error) {
+                console.error(`Failed to send email to ${email}:`, error);
+              }
+            });
+          });
+
+          res.status(200).json({
+            message: "Meeting deleted and notifications sent successfully",
+          });
+        }
+      );
     }
   );
 });
