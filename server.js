@@ -279,18 +279,147 @@ app.post("/appointments", authenticateToken, (req, res) => {
 
       if (sendNotification) {
         const guestList = JSON.parse(guests);
-        const creatorEmail = guestList[0];
         const formattedStart = moment(start).format(
           "dddd, MMMM D, YYYY, HH:mm"
         );
-        const formattedEnd = moment(end).format("dddd, MMMM D, YYYY, HH:mm");
+        const formattedEnd = moment(end).format("HH:mm");
 
         guestList.forEach((email) => {
           const mailOptions = {
             from: process.env.EMAIL,
             to: email,
-            subject: "Meeting Invitation",
-            text: `You are invited to a meeting!\n\nTitle: ${title}\nStart: ${formattedStart}\nEnd: ${formattedEnd}\nCreator: ${creatorEmail}\nLocation: ${location}\nDescription: ${description}`,
+            subject: `Poziv na sastanak: ${title} @ ${formattedStart} - ${formattedEnd}`,
+            html: `<table cellpadding="0" cellspacing="0" border="0" style="
+    border: 1px solid #e5e5e5;
+    min-width: 624px;
+    table-layout: fixed;
+    width: 100%;
+    border-collapse: collapse;
+    font-family: Helvetica;
+">
+  <tbody>
+    <tr>
+      <td style="
+          background-color: #f6f6f6;
+          border: 1px solid #e5e5e5;
+          padding: 21px;
+          vertical-align: top;
+          width: 100%;
+          max-width: 315px;
+          display: block;
+      ">
+        <div style="
+            background: url('https://odseknis.akademijanis.edu.rs/wp-content/uploads/2020/03/Logo-akademije-Nis-2020-e1583448050322.png') no-repeat center center;
+            height: 80px;
+            width: 100%;
+            display: block;
+        "></div>
+      </td>
+    </tr>
+    <tr>
+      <td colspan="2" style="
+          width: 100%;
+          padding: 21px;
+          vertical-align: top;
+      ">
+        <table cellpadding="0" cellspacing="0" border="0" style="
+            width: 100%;
+            border-collapse: collapse;
+            display: block;
+        ">
+          <tbody>
+          <tr style="display: table-row; margin: 0 0 20px 0;">
+          <td style="
+             color: #222;
+             font-size: 24px;
+            padding: 0 0 20px 0;
+             text-transform: capitalize;
+             ">${title}</td>
+          </tr>
+            <tr style="display: table-row;">
+              <td style="
+                  padding-right: 10px;
+                  min-width: 48px;
+                  white-space: nowrap;
+                  padding-bottom: 6px;
+                  color: #999;
+                  padding-left: 0;
+                  padding-top: 2px;
+                  vertical-align: top;
+                  word-wrap: break-word;
+              ">Kada</td>
+              <td style="
+                  padding-left: 0;
+                  padding-top: 2px;
+                  vertical-align: top;
+                  word-wrap: break-word;
+              ">${formattedStart} – ${formattedEnd}</td>
+            </tr>
+            <tr style="display: table-row;">
+              <td style="
+                  padding-right: 10px;
+                  min-width: 48px;
+                  white-space: nowrap;
+                  padding-bottom: 6px;
+                  color: #999;
+                  padding-left: 0;
+                  padding-top: 2px;
+                  vertical-align: top;
+                  word-wrap: break-word;
+              ">Ko</td>
+              <td style="
+                  padding-left: 0;
+                  padding-top: 2px;
+                  vertical-align: top;
+                  word-wrap: break-word;
+                  word-spacing: 5px;
+              ">${guestList}</td>
+            </tr>
+            <tr style="display: table-row;">
+               <td style="
+                  padding-right: 10px;
+                  min-width: 48px;
+                  white-space: nowrap;
+                  padding-bottom: 6px;
+                  color: #999;
+                  padding-left: 0;
+                  padding-top: 2px;
+                  vertical-align: top;
+                  word-wrap: break-word;
+              ">Gde</td>
+              <td style="
+                  padding-left: 0;
+                  padding-top: 2px;
+                  vertical-align: top;
+                  word-wrap: break-word;
+              ">${location}</td>
+            </tr>
+            <tr style="display: table-row;">
+               <td style="
+                  padding-right: 10px;
+                  min-width: 48px;
+                  white-space: nowrap;
+                  padding-bottom: 6px;
+                  color: #999;
+                  padding-left: 0;
+                  padding-top: 2px;
+                  vertical-align: top;
+                  word-wrap: break-word;
+              ">Opis</td>
+              <td style="
+                  padding-left: 0;
+                  padding-top: 2px;
+                  vertical-align: top;
+                  word-wrap: break-word;
+              ">${description}</td>
+            </tr>
+          </tbody>
+        </table>
+      </td>
+    </tr>
+  </tbody>
+</table>
+`,
           };
 
           transporter.sendMail(mailOptions, (error, info) => {
@@ -362,18 +491,147 @@ app.put("/appointments/:id", authenticateToken, (req, res) => {
 
       if (sendNotification) {
         const guestList = JSON.parse(guests);
-        const creatorEmail = guestList[0];
         const formattedStart = moment(start).format(
           "dddd, MMMM D, YYYY, HH:mm"
         );
-        const formattedEnd = moment(end).format("dddd, MMMM D, YYYY, HH:mm");
+        const formattedEnd = moment(end).format("HH:mm");
 
         guestList.forEach((email) => {
           const mailOptions = {
             from: process.env.EMAIL,
             to: email,
-            subject: "Meeting Update",
-            text: `Meeting you are invited to has been updated!\n\nTitle: ${title}\nStart: ${formattedStart}\nEnd: ${formattedEnd}\nCreator: ${creatorEmail}\nLocation: ${location}\nDescription: ${description}`,
+            subject: `Ažuriranje sastanka: ${title} @ ${formattedStart} - ${formattedEnd}`,
+            html: `<table cellpadding="0" cellspacing="0" border="0" style="
+            border: 1px solid #e5e5e5;
+            min-width: 624px;
+            table-layout: fixed;
+            width: 100%;
+            border-collapse: collapse;
+            font-family: Helvetica;
+        ">
+          <tbody>
+            <tr>
+              <td style="
+                  background-color: #f6f6f6;
+                  border: 1px solid #e5e5e5;
+                  padding: 21px;
+                  vertical-align: top;
+                  width: 100%;
+                  max-width: 315px;
+                  display: block;
+              ">
+                <div style="
+                    background: url('https://odseknis.akademijanis.edu.rs/wp-content/uploads/2020/03/Logo-akademije-Nis-2020-e1583448050322.png') no-repeat center center;
+                    height: 80px;
+                    width: 100%;
+                    display: block;
+                "></div>
+              </td>
+            </tr>
+            <tr>
+              <td colspan="2" style="
+                  width: 100%;
+                  padding: 21px;
+                  vertical-align: top;
+              ">
+                <table cellpadding="0" cellspacing="0" border="0" style="
+                    width: 100%;
+                    border-collapse: collapse;
+                    display: block;
+                ">
+                  <tbody>
+                   <tr style="display: table-row; margin: 0 0 20px 0;">
+          <td style="
+             color: #222;
+             font-size: 24px;
+            padding: 0 0 20px 0;
+             text-transform: capitalize;
+             ">${title}</td>
+          </tr>
+                    <tr style="display: table-row;">
+                      <td style="
+                          padding-right: 10px;
+                          min-width: 48px;
+                          white-space: nowrap;
+                          padding-bottom: 6px;
+                          color: #999;
+                          padding-left: 0;
+                          padding-top: 2px;
+                          vertical-align: top;
+                          word-wrap: break-word;
+                      ">Kada</td>
+                      <td style="
+                          padding-left: 0;
+                          padding-top: 2px;
+                          vertical-align: top;
+                          word-wrap: break-word;
+                      ">${formattedStart} – ${formattedEnd}</td>
+                    </tr>
+                    <tr style="display: table-row;">
+                      <td style="
+                          padding-right: 10px;
+                          min-width: 48px;
+                          white-space: nowrap;
+                          padding-bottom: 6px;
+                          color: #999;
+                          padding-left: 0;
+                          padding-top: 2px;
+                          vertical-align: top;
+                          word-wrap: break-word;
+                      ">Ko</td>
+                      <td style="
+                          padding-left: 0;
+                          padding-top: 2px;
+                          vertical-align: top;
+                          word-wrap: break-word;
+                          word-spacing: 5px;
+                      ">${guestList}</td>
+                    </tr>
+                    <tr style="display: table-row;">
+                       <td style="
+                          padding-right: 10px;
+                          min-width: 48px;
+                          white-space: nowrap;
+                          padding-bottom: 6px;
+                          color: #999;
+                          padding-left: 0;
+                          padding-top: 2px;
+                          vertical-align: top;
+                          word-wrap: break-word;
+                      ">Gde</td>
+                      <td style="
+                          padding-left: 0;
+                          padding-top: 2px;
+                          vertical-align: top;
+                          word-wrap: break-word;
+                      ">${location}</td>
+                    </tr>
+                    <tr style="display: table-row;">
+                       <td style="
+                          padding-right: 10px;
+                          min-width: 48px;
+                          white-space: nowrap;
+                          padding-bottom: 6px;
+                          color: #999;
+                          padding-left: 0;
+                          padding-top: 2px;
+                          vertical-align: top;
+                          word-wrap: break-word;
+                      ">Opis</td>
+                      <td style="
+                          padding-left: 0;
+                          padding-top: 2px;
+                          vertical-align: top;
+                          word-wrap: break-word;
+                      ">${description}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        `,
           };
 
           transporter.sendMail(mailOptions, (error, info) => {
@@ -409,9 +667,11 @@ app.delete("/delete-appointments/:id", authenticateToken, (req, res) => {
       const meeting = results[0];
       const { title, start, end, location, guests, description } = meeting;
       const guestList = JSON.parse(guests);
-      const creatorEmail = guestList[0];
       const formattedStart = moment(start).format("dddd, MMMM D, YYYY, HH:mm");
-      const formattedEnd = moment(end).format("dddd, MMMM D, YYYY, HH:mm");
+      const monthString = moment(start).format("MMMM");
+      const dayNumber = moment(start).format("D");
+      const dayString = moment(start).format("dddd");
+      const formattedEnd = moment(end).format("HH:mm");
 
       pool.query(
         "DELETE FROM appointments WHERE id = ?",
@@ -430,8 +690,143 @@ app.delete("/delete-appointments/:id", authenticateToken, (req, res) => {
             const mailOptions = {
               from: process.env.EMAIL,
               to: email,
-              subject: "Meeting Canceled",
-              text: `A meeting you were invited to has been canceled.\n\nTitle: ${title}\nStart: ${formattedStart}\nEnd: ${formattedEnd}\nCreator: ${creatorEmail}\nLocation: ${location}\nDescription: ${description}`,
+              subject: `Otkazan je sastanak: ${title} @ ${formattedStart} - ${formattedEnd}`,
+              html: `<table cellpadding="0" cellspacing="0" border="0" style="
+              border: 1px solid #e5e5e5;
+              min-width: 624px;
+              table-layout: fixed;
+              width: 100%;
+              border-collapse: collapse;
+              font-family: Helvetica;
+          ">
+            <tbody>
+              <tr>
+                <td style="
+                    background-color: #f6f6f6;
+                    border: 1px solid #e5e5e5;
+                    padding: 21px;
+                    vertical-align: top;
+                    width: 100%;
+                    max-width: 315px;
+                    display: block;
+                ">
+                  <div style="
+                      background: url('https://odseknis.akademijanis.edu.rs/wp-content/uploads/2020/03/Logo-akademije-Nis-2020-e1583448050322.png') no-repeat center center;
+                      height: 80px;
+                      width: 100%;
+                      display: block;
+                  "></div>
+                </td>
+              </tr>
+              <tr>
+                <td colspan="2" style="
+                    width: 100%;
+                    padding: 21px;
+                    vertical-align: top;
+                ">
+                  <table cellpadding="0" cellspacing="0" border="0" style="
+                      width: 100%;
+                      border-collapse: collapse;
+                      display: block;
+                  ">
+                    <tbody>
+                     <tr style="display: table-row;">
+          <td style="
+             color: #222;
+             font-size: 24px;
+             text-transform: capitalize;
+            text-decoration: line-through;
+              padding: 0 0 20px 0;
+             ">${title}</td>
+          </tr>
+                      <tr style="display: table-row;">
+                        <td style="
+                            padding-right: 10px;
+                            min-width: 48px;
+                            white-space: nowrap;
+                            padding-bottom: 6px;
+                            color: #999;
+                            padding-left: 0;
+                            padding-top: 2px;
+                            vertical-align: top;
+                            word-wrap: break-word;
+                        ">Kada</td>
+                        <td style="
+                            padding-left: 0;
+                            padding-top: 2px;
+                            vertical-align: top;
+                            word-wrap: break-word;
+                             text-decoration: line-through;
+                        ">${formattedStart} – ${formattedEnd}</td>
+                      </tr>
+                      <tr style="display: table-row;">
+                        <td style="
+                            padding-right: 10px;
+                            min-width: 48px;
+                            white-space: nowrap;
+                            padding-bottom: 6px;
+                            color: #999;
+                            padding-left: 0;
+                            padding-top: 2px;
+                            vertical-align: top;
+                            word-wrap: break-word;
+                        ">Ko</td>
+                        <td style="
+                            padding-left: 0;
+                            padding-top: 2px;
+                            vertical-align: top;
+                            word-wrap: break-word;
+                            word-spacing: 5px;
+                             text-decoration: line-through;
+                        ">${guestList}</td>
+                      </tr>
+                      <tr style="display: table-row;">
+                         <td style="
+                            padding-right: 10px;
+                            min-width: 48px;
+                            white-space: nowrap;
+                            padding-bottom: 6px;
+                            color: #999;
+                            padding-left: 0;
+                            padding-top: 2px;
+                            vertical-align: top;
+                            word-wrap: break-word;
+                        ">Gde</td>
+                        <td style="
+                            padding-left: 0;
+                            padding-top: 2px;
+                            vertical-align: top;
+                            word-wrap: break-word;
+                             text-decoration: line-through;
+                        ">${location}</td>
+                      </tr>
+                      <tr style="display: table-row;">
+                         <td style="
+                            padding-right: 10px;
+                            min-width: 48px;
+                            white-space: nowrap;
+                            padding-bottom: 6px;
+                            color: #999;
+                            padding-left: 0;
+                            padding-top: 2px;
+                            vertical-align: top;
+                            word-wrap: break-word;
+                        ">Opis</td>
+                        <td style="
+                            padding-left: 0;
+                            padding-top: 2px;
+                            vertical-align: top;
+                             text-decoration: line-through;
+                            word-wrap: break-word;
+                        ">${description}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          `,
             };
 
             transporter.sendMail(mailOptions, (error, info) => {
