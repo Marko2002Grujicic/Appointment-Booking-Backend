@@ -14,10 +14,10 @@ const app = express();
 app.use(bodyParser.json());
 
 const pool = mysql.createPool({
-  host: "localhost",
-  user: "root",
-  password: "",
-  database: "appointment_meetings",
+  host: process.env.HOST,
+  user: process.env.USER,
+  password: process.env.PASSWORD,
+  database: process.env.DATABASE,
   connectionLimit: 10,
 });
 
@@ -191,8 +191,6 @@ app.get("/user/:id", (req, res) => {
     res.status(200).json(results);
   });
 });
-
-app.post;
 
 app.get("/users/:id/availability", (req, res) => {
   const userId = req.params.id;
