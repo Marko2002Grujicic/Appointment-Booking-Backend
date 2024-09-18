@@ -14,9 +14,9 @@ const app = express();
 app.use(bodyParser.json());
 
 const pool = mysql.createPool({
-  host: process.env.HOST,
-  user: process.env.USER,
-  password: process.env.PASSWORD,
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: "",
   database: process.env.DATABASE,
   connectionLimit: 10,
 });
@@ -238,12 +238,26 @@ app.get("/appointments", authenticateToken, (req, res) => {
   const userId = req.user.id;
 
   pool.query(
-    "SELECT * FROM appointments WHERE user_id = ?",
+    "SELECT email FROM users WHERE id = ?",
     [userId],
     (error, results) => {
-      if (error)
-        return res.status(500).send("There was an error fetching the meetings");
-      res.status(200).json(results);
+      if (error) return res.status(500).send("Error fetching user email");
+
+      const userEmail = results[0]?.email;
+
+      if (!userEmail) {
+        return res.status(404).send("User email not found");
+      }
+
+      pool.query(
+        "SELECT * FROM appointments WHERE JSON_CONTAINS(guests, JSON_QUOTE(?))",
+        [userEmail],
+        (error, results) => {
+          if (error) return res.status(500).send("Error fetching appointments");
+
+          res.status(200).json(results);
+        }
+      );
     }
   );
 });
