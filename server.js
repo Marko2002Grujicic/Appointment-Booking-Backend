@@ -5,9 +5,11 @@ const jwt = require("jsonwebtoken");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const moment = require("moment");
+const crypto = require("crypto");
 const authenticateToken = require("./middleware/authenticateToken");
 const getOverlappingTimes = require("./middleware/timeUnion");
 const transporter = require("./middleware/nodemailer");
+const generateEmailTemplate = require("./middleware/generateTemplate");
 require("dotenv").config();
 
 const app = express();
@@ -16,7 +18,7 @@ app.use(bodyParser.json());
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
-  password: "",
+  password: process.env.DB_PASSWORD,
   database: process.env.DATABASE,
   connectionLimit: 10,
 });
@@ -50,17 +52,43 @@ app.post("/register", (req, res) => {
     }
 
     const hashedPassword = bcrypt.hashSync(password, 10);
+    const verificationToken = crypto.randomBytes(32).toString("hex");
+    const verificationUrl = `http://localhost:5000/verify-email?token=${verificationToken}`;
 
     pool.query(
-      "INSERT INTO users (name, email, password, preferred_language) VALUES (?, ?, ?, ?)",
-      [name, email, hashedPassword, preferred_language],
+      "INSERT INTO users (name, email, password, preferred_language, verification_token, is_verified) VALUES (?, ?, ?, ?, ?, ?)",
+      [
+        name,
+        email,
+        hashedPassword,
+        preferred_language,
+        verificationToken,
+        false,
+      ],
       (err, result) => {
         if (err) {
           console.error("Database error:", err);
           return res.status(500).send("Server error");
         }
 
-        res.status(201).send("User registered successfully");
+        const mailOptions = {
+          from: process.env.EMAIL,
+          to: email,
+          subject: "Email Verification",
+          text: `Please verify your email by clicking the link: ${verificationUrl}`,
+        };
+
+        transporter.sendMail(mailOptions, (error, info) => {
+          if (error) {
+            console.error("Email error:", error);
+            return res
+              .status(500)
+              .json({ error: "Error sending verification email" });
+          }
+          res
+            .status(201)
+            .json({ message: "User registered, verification email sent" });
+        });
       }
     );
   });
@@ -87,6 +115,12 @@ app.post("/login", (req, res) => {
 
     const user = results[0];
 
+    if (!user.is_verified) {
+      return res.status(403).json({
+        error: "Please verify your email before logging in.",
+      });
+    }
+
     if (!bcrypt.compareSync(password, user.password)) {
       return res.status(401).json({ error: "Invalid email or password" });
     }
@@ -95,15 +129,58 @@ app.post("/login", (req, res) => {
       expiresIn: "24h",
     });
 
-    res
-      .status(200)
-      .json({ message: "Login successful", token, userId: user.id });
+    res.status(200).json({
+      message: "Login successful",
+      token,
+      userId: user.id,
+      lang: user.preferred_language,
+    });
   });
 });
 
 app.post("/logout", (req, res) => {
   res.cookie("authToken", "", { httpOnly: true, expires: new Date(0) });
   res.status(200).json({ message: "Logged out successfully" });
+});
+
+app.get("/verify-email", (req, res) => {
+  const { token } = req.query;
+
+  console.log("happened");
+
+  if (!token) {
+    return res.status(400).json({ error: "Invalid token" });
+  }
+
+  pool.query(
+    "SELECT * FROM users WHERE verification_token = ?",
+    [token],
+    (err, results) => {
+      if (err) {
+        console.error("Database error:", err);
+        return res.status(500).send("Server error");
+      }
+
+      if (results.length === 0) {
+        return res.status(400).json({ error: "Invalid or expired token" });
+      }
+
+      pool.query(
+        "UPDATE users SET is_verified = true, verification_token = NULL WHERE verification_token = ?",
+        [token],
+        (err, result) => {
+          if (err) {
+            console.error("Database error:", err);
+            return res.status(500).send("Server error");
+          }
+
+          res
+            .status(200)
+            .send("Email verified successfully. You can now log in.");
+        }
+      );
+    }
+  );
 });
 
 app.get("/user-emails", (req, res) => {
@@ -301,137 +378,14 @@ app.post("/appointments", authenticateToken, (req, res) => {
             from: process.env.EMAIL,
             to: email,
             subject: `Poziv na sastanak: ${title} @ ${formattedStart} - ${formattedEnd}`,
-            html: `<table cellpadding="0" cellspacing="0" border="0" style="
-    border: 1px solid #e5e5e5;
-    min-width: 624px;
-    table-layout: fixed;
-    width: 100%;
-    border-collapse: collapse;
-    font-family: Helvetica;
-">
-  <tbody>
-    <tr>
-      <td style="
-          background-color: #f6f6f6;
-          border: 1px solid #e5e5e5;
-          padding: 21px;
-          vertical-align: top;
-          width: 100%;
-          max-width: 315px;
-          display: block;
-      ">
-        <div style="
-            background: url('https://odseknis.akademijanis.edu.rs/wp-content/uploads/2020/03/Logo-akademije-Nis-2020-e1583448050322.png') no-repeat center center;
-            height: 80px;
-            width: 100%;
-            display: block;
-        "></div>
-      </td>
-    </tr>
-    <tr>
-      <td colspan="2" style="
-          width: 100%;
-          padding: 21px;
-          vertical-align: top;
-      ">
-        <table cellpadding="0" cellspacing="0" border="0" style="
-            width: 100%;
-            border-collapse: collapse;
-            display: block;
-        ">
-          <tbody>
-          <tr style="display: table-row; margin: 0 0 20px 0;">
-          <td style="
-             color: #222;
-             font-size: 24px;
-            padding: 0 0 20px 0;
-             text-transform: capitalize;
-             ">${title}</td>
-          </tr>
-            <tr style="display: table-row;">
-              <td style="
-                  padding-right: 10px;
-                  min-width: 48px;
-                  white-space: nowrap;
-                  padding-bottom: 6px;
-                  color: #999;
-                  padding-left: 0;
-                  padding-top: 2px;
-                  vertical-align: top;
-                  word-wrap: break-word;
-              ">Kada</td>
-              <td style="
-                  padding-left: 0;
-                  padding-top: 2px;
-                  vertical-align: top;
-                  word-wrap: break-word;
-              ">${formattedStart} – ${formattedEnd}</td>
-            </tr>
-            <tr style="display: table-row;">
-              <td style="
-                  padding-right: 10px;
-                  min-width: 48px;
-                  white-space: nowrap;
-                  padding-bottom: 6px;
-                  color: #999;
-                  padding-left: 0;
-                  padding-top: 2px;
-                  vertical-align: top;
-                  word-wrap: break-word;
-              ">Ko</td>
-              <td style="
-                  padding-left: 0;
-                  padding-top: 2px;
-                  vertical-align: top;
-                  word-wrap: break-word;
-                  word-spacing: 5px;
-              ">${guestList}</td>
-            </tr>
-            <tr style="display: table-row;">
-               <td style="
-                  padding-right: 10px;
-                  min-width: 48px;
-                  white-space: nowrap;
-                  padding-bottom: 6px;
-                  color: #999;
-                  padding-left: 0;
-                  padding-top: 2px;
-                  vertical-align: top;
-                  word-wrap: break-word;
-              ">Gde</td>
-              <td style="
-                  padding-left: 0;
-                  padding-top: 2px;
-                  vertical-align: top;
-                  word-wrap: break-word;
-              ">${location}</td>
-            </tr>
-            <tr style="display: table-row;">
-               <td style="
-                  padding-right: 10px;
-                  min-width: 48px;
-                  white-space: nowrap;
-                  padding-bottom: 6px;
-                  color: #999;
-                  padding-left: 0;
-                  padding-top: 2px;
-                  vertical-align: top;
-                  word-wrap: break-word;
-              ">Opis</td>
-              <td style="
-                  padding-left: 0;
-                  padding-top: 2px;
-                  vertical-align: top;
-                  word-wrap: break-word;
-              ">${description}</td>
-            </tr>
-          </tbody>
-        </table>
-      </td>
-    </tr>
-  </tbody>
-</table>
-`,
+            html: generateEmailTemplate(
+              title,
+              formattedStart,
+              formattedEnd,
+              guestList,
+              location,
+              description
+            ),
           };
 
           transporter.sendMail(mailOptions, (error, info) => {
@@ -513,137 +467,14 @@ app.put("/appointments/:id", authenticateToken, (req, res) => {
             from: process.env.EMAIL,
             to: email,
             subject: `Ažuriranje sastanka: ${title} @ ${formattedStart} - ${formattedEnd}`,
-            html: `<table cellpadding="0" cellspacing="0" border="0" style="
-            border: 1px solid #e5e5e5;
-            min-width: 624px;
-            table-layout: fixed;
-            width: 100%;
-            border-collapse: collapse;
-            font-family: Helvetica;
-        ">
-          <tbody>
-            <tr>
-              <td style="
-                  background-color: #f6f6f6;
-                  border: 1px solid #e5e5e5;
-                  padding: 21px;
-                  vertical-align: top;
-                  width: 100%;
-                  max-width: 315px;
-                  display: block;
-              ">
-                <div style="
-                    background: url('https://odseknis.akademijanis.edu.rs/wp-content/uploads/2020/03/Logo-akademije-Nis-2020-e1583448050322.png') no-repeat center center;
-                    height: 80px;
-                    width: 100%;
-                    display: block;
-                "></div>
-              </td>
-            </tr>
-            <tr>
-              <td colspan="2" style="
-                  width: 100%;
-                  padding: 21px;
-                  vertical-align: top;
-              ">
-                <table cellpadding="0" cellspacing="0" border="0" style="
-                    width: 100%;
-                    border-collapse: collapse;
-                    display: block;
-                ">
-                  <tbody>
-                   <tr style="display: table-row; margin: 0 0 20px 0;">
-          <td style="
-             color: #222;
-             font-size: 24px;
-            padding: 0 0 20px 0;
-             text-transform: capitalize;
-             ">${title}</td>
-          </tr>
-                    <tr style="display: table-row;">
-                      <td style="
-                          padding-right: 10px;
-                          min-width: 48px;
-                          white-space: nowrap;
-                          padding-bottom: 6px;
-                          color: #999;
-                          padding-left: 0;
-                          padding-top: 2px;
-                          vertical-align: top;
-                          word-wrap: break-word;
-                      ">Kada</td>
-                      <td style="
-                          padding-left: 0;
-                          padding-top: 2px;
-                          vertical-align: top;
-                          word-wrap: break-word;
-                      ">${formattedStart} – ${formattedEnd}</td>
-                    </tr>
-                    <tr style="display: table-row;">
-                      <td style="
-                          padding-right: 10px;
-                          min-width: 48px;
-                          white-space: nowrap;
-                          padding-bottom: 6px;
-                          color: #999;
-                          padding-left: 0;
-                          padding-top: 2px;
-                          vertical-align: top;
-                          word-wrap: break-word;
-                      ">Ko</td>
-                      <td style="
-                          padding-left: 0;
-                          padding-top: 2px;
-                          vertical-align: top;
-                          word-wrap: break-word;
-                          word-spacing: 5px;
-                      ">${guestList}</td>
-                    </tr>
-                    <tr style="display: table-row;">
-                       <td style="
-                          padding-right: 10px;
-                          min-width: 48px;
-                          white-space: nowrap;
-                          padding-bottom: 6px;
-                          color: #999;
-                          padding-left: 0;
-                          padding-top: 2px;
-                          vertical-align: top;
-                          word-wrap: break-word;
-                      ">Gde</td>
-                      <td style="
-                          padding-left: 0;
-                          padding-top: 2px;
-                          vertical-align: top;
-                          word-wrap: break-word;
-                      ">${location}</td>
-                    </tr>
-                    <tr style="display: table-row;">
-                       <td style="
-                          padding-right: 10px;
-                          min-width: 48px;
-                          white-space: nowrap;
-                          padding-bottom: 6px;
-                          color: #999;
-                          padding-left: 0;
-                          padding-top: 2px;
-                          vertical-align: top;
-                          word-wrap: break-word;
-                      ">Opis</td>
-                      <td style="
-                          padding-left: 0;
-                          padding-top: 2px;
-                          vertical-align: top;
-                          word-wrap: break-word;
-                      ">${description}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        `,
+            html: generateEmailTemplate(
+              title,
+              formattedStart,
+              formattedEnd,
+              guestList,
+              location,
+              description
+            ),
           };
 
           transporter.sendMail(mailOptions, (error, info) => {
@@ -680,9 +511,6 @@ app.delete("/delete-appointments/:id", authenticateToken, (req, res) => {
       const { title, start, end, location, guests, description } = meeting;
       const guestList = JSON.parse(guests);
       const formattedStart = moment(start).format("dddd, MMMM D, YYYY, HH:mm");
-      const monthString = moment(start).format("MMMM");
-      const dayNumber = moment(start).format("D");
-      const dayString = moment(start).format("dddd");
       const formattedEnd = moment(end).format("HH:mm");
 
       pool.query(
@@ -703,142 +531,14 @@ app.delete("/delete-appointments/:id", authenticateToken, (req, res) => {
               from: process.env.EMAIL,
               to: email,
               subject: `Otkazan je sastanak: ${title} @ ${formattedStart} - ${formattedEnd}`,
-              html: `<table cellpadding="0" cellspacing="0" border="0" style="
-              border: 1px solid #e5e5e5;
-              min-width: 624px;
-              table-layout: fixed;
-              width: 100%;
-              border-collapse: collapse;
-              font-family: Helvetica;
-          ">
-            <tbody>
-              <tr>
-                <td style="
-                    background-color: #f6f6f6;
-                    border: 1px solid #e5e5e5;
-                    padding: 21px;
-                    vertical-align: top;
-                    width: 100%;
-                    max-width: 315px;
-                    display: block;
-                ">
-                  <div style="
-                      background: url('https://odseknis.akademijanis.edu.rs/wp-content/uploads/2020/03/Logo-akademije-Nis-2020-e1583448050322.png') no-repeat center center;
-                      height: 80px;
-                      width: 100%;
-                      display: block;
-                  "></div>
-                </td>
-              </tr>
-              <tr>
-                <td colspan="2" style="
-                    width: 100%;
-                    padding: 21px;
-                    vertical-align: top;
-                ">
-                  <table cellpadding="0" cellspacing="0" border="0" style="
-                      width: 100%;
-                      border-collapse: collapse;
-                      display: block;
-                  ">
-                    <tbody>
-                     <tr style="display: table-row;">
-          <td style="
-             color: #222;
-             font-size: 24px;
-             text-transform: capitalize;
-            text-decoration: line-through;
-              padding: 0 0 20px 0;
-             ">${title}</td>
-          </tr>
-                      <tr style="display: table-row;">
-                        <td style="
-                            padding-right: 10px;
-                            min-width: 48px;
-                            white-space: nowrap;
-                            padding-bottom: 6px;
-                            color: #999;
-                            padding-left: 0;
-                            padding-top: 2px;
-                            vertical-align: top;
-                            word-wrap: break-word;
-                        ">Kada</td>
-                        <td style="
-                            padding-left: 0;
-                            padding-top: 2px;
-                            vertical-align: top;
-                            word-wrap: break-word;
-                             text-decoration: line-through;
-                        ">${formattedStart} – ${formattedEnd}</td>
-                      </tr>
-                      <tr style="display: table-row;">
-                        <td style="
-                            padding-right: 10px;
-                            min-width: 48px;
-                            white-space: nowrap;
-                            padding-bottom: 6px;
-                            color: #999;
-                            padding-left: 0;
-                            padding-top: 2px;
-                            vertical-align: top;
-                            word-wrap: break-word;
-                        ">Ko</td>
-                        <td style="
-                            padding-left: 0;
-                            padding-top: 2px;
-                            vertical-align: top;
-                            word-wrap: break-word;
-                            word-spacing: 5px;
-                             text-decoration: line-through;
-                        ">${guestList}</td>
-                      </tr>
-                      <tr style="display: table-row;">
-                         <td style="
-                            padding-right: 10px;
-                            min-width: 48px;
-                            white-space: nowrap;
-                            padding-bottom: 6px;
-                            color: #999;
-                            padding-left: 0;
-                            padding-top: 2px;
-                            vertical-align: top;
-                            word-wrap: break-word;
-                        ">Gde</td>
-                        <td style="
-                            padding-left: 0;
-                            padding-top: 2px;
-                            vertical-align: top;
-                            word-wrap: break-word;
-                             text-decoration: line-through;
-                        ">${location}</td>
-                      </tr>
-                      <tr style="display: table-row;">
-                         <td style="
-                            padding-right: 10px;
-                            min-width: 48px;
-                            white-space: nowrap;
-                            padding-bottom: 6px;
-                            color: #999;
-                            padding-left: 0;
-                            padding-top: 2px;
-                            vertical-align: top;
-                            word-wrap: break-word;
-                        ">Opis</td>
-                        <td style="
-                            padding-left: 0;
-                            padding-top: 2px;
-                            vertical-align: top;
-                             text-decoration: line-through;
-                            word-wrap: break-word;
-                        ">${description}</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-          `,
+              html: generateEmailTemplate(
+                title,
+                formattedStart,
+                formattedEnd,
+                guestList,
+                location,
+                description
+              ),
             };
 
             transporter.sendMail(mailOptions, (error, info) => {
